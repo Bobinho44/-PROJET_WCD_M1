@@ -1,0 +1,6 @@
+indexes:
+- kind: FollowIndex 
+  properties: 
+    - name: follower 
+    - name: followed
+    

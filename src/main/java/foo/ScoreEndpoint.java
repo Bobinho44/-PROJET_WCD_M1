@@ -1,10 +1,13 @@
 package foo;
 
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import com.google.api.server.spi.auth.common.User;
 import com.google.api.server.spi.config.Api;
@@ -21,8 +24,10 @@ import com.google.appengine.api.datastore.Cursor;
 import com.google.appengine.api.datastore.DatastoreService;
 import com.google.appengine.api.datastore.DatastoreServiceFactory;
 import com.google.appengine.api.datastore.Entity;
+import com.google.appengine.api.datastore.EntityNotFoundException;
 import com.google.appengine.api.datastore.FetchOptions;
 import com.google.appengine.api.datastore.Key;
+import com.google.appengine.api.datastore.KeyFactory;
 import com.google.appengine.api.datastore.Query;
 import com.google.appengine.api.datastore.PreparedQuery;
 import com.google.appengine.api.datastore.PropertyProjection;
@@ -38,19 +43,97 @@ import com.google.appengine.api.datastore.Transaction;
 
 @Api(name = "myApi",
      version = "v1",
-     audiences = "927375242383-t21v9ml38tkh2pr30m4hqiflkl3jfohl.apps.googleusercontent.com",
-  	 clientIds = {"927375242383-t21v9ml38tkh2pr30m4hqiflkl3jfohl.apps.googleusercontent.com",
+     audiences = "198559984912-f0hq5dtmguc10ta2lrfrfhlmmtgdg805.apps.googleusercontent.com",
+  	 clientIds = {"198559984912-f0hq5dtmguc10ta2lrfrfhlmmtgdg805.apps.googleusercontent.com",
         "927375242383-jm45ei76rdsfv7tmjv58tcsjjpvgkdje.apps.googleusercontent.com"},
      namespace =
      @ApiNamespace(
-		   ownerDomain = "helloworld.example.com",
-		   ownerName = "helloworld.example.com",
+		   ownerDomain = "wcd-cloud-datastore-projet.appspot.com",
+		   ownerName = "wcd-cloud-datastore-projet.appspot.com",
 		   packagePath = "")
      )
 
 public class ScoreEndpoint {
 
+    @ApiMethod(name = "registerUser", httpMethod = HttpMethod.POST)
+	public void registerUser(User user, TinyUserInfo userInfo) throws UnauthorizedException {
+		if (user == null) {
+			throw new UnauthorizedException("Invalid credentials");
+        }
 
+        DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
+
+        //Creates the user
+        Entity tinyUser = new Entity("User", user.getId());
+        tinyUser.setProperty("fullName", userInfo.name);
+        tinyUser.setProperty("name", userInfo.name.toLowerCase());
+        tinyUser.setProperty("picture", userInfo.picture);
+        datastore.put(tinyUser);
+        Entity tinyUser2 = new Entity("User", "abcdefg9999");
+        tinyUser.setProperty("fullName", "Jean Benoit");
+        tinyUser2.setProperty("name", "jean benoit");
+        tinyUser2.setProperty("picture", "https://cdn.pixabay.com/photo/2015/04/23/22/00/tree-736885__480.jpg");
+        datastore.put(tinyUser2);
+
+        //Creates the follow index
+        Entity tinyFollowIndex = new Entity("FollowIndex", user.getId() + "/" + user.getId());
+        tinyFollowIndex.setProperty("follower", user.getId());
+        tinyFollowIndex.setProperty("followed", user.getId());
+        datastore.put(tinyFollowIndex);
+    }
+
+    @ApiMethod(name = "searchUsers", httpMethod = HttpMethod.GET)
+	public List<Entity> searchUsers(User user, TinySearchUserInfo searchUserInfo) throws UnauthorizedException {
+		if (user == null) {
+			throw new UnauthorizedException("Invalid credentials");
+        }
+
+        if (searchUserInfo.name.equals("")) {
+            return Collections.emptyList();
+        }
+        
+		Query q = new Query("User").setFilter(new FilterPredicate("name", FilterOperator.GREATER_THAN_OR_EQUAL, searchUserInfo.name));
+
+		DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
+		PreparedQuery pq = datastore.prepare(q);
+		
+        return pq.asList(FetchOptions.Builder.withLimit(10)).stream().map(searchedUser -> {
+            Entity e = new Entity("SearchedUser");
+            e.setProperty("id", searchedUser.getKey().getName());
+            e.setProperty("name", searchedUser.getProperty("name"));
+            e.setProperty("picture", searchedUser.getProperty("picture"));
+            e.setProperty("isFollower", isFollower(user.getId(), searchedUser.getKey().getName()));
+
+            return e;
+        }).collect(Collectors.toList());
+	}
+    
+    @ApiMethod(name = "followUser", httpMethod = HttpMethod.POST)
+	public void followUser(User user, TinyFollowInfo followInfo) throws UnauthorizedException {
+		if (user == null) {
+			throw new UnauthorizedException("Invalid credentials");
+        }
+
+        DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
+
+        //Creates the follow index
+        Entity tinyFollowIndex = new Entity("FollowIndex", user.getId() + "/" + followInfo.id);
+        tinyFollowIndex.setProperty("follower", user.getId());
+        tinyFollowIndex.setProperty("followed", followInfo.id);
+        datastore.put(tinyFollowIndex);
+    }
+
+    private boolean isFollower(String follower, String followed) {
+        DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
+
+        try {
+            datastore.get(KeyFactory.createKey("FollowIndex", follower + "/" + followed));
+            return true;
+        }
+        catch (EntityNotFoundException e) {
+            return false;
+        }
+    }
 	Random r = new Random();
 
     // remember: return Primitives and enums are not allowed. 
@@ -76,16 +159,6 @@ public class ScoreEndpoint {
 		DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
 		PreparedQuery pq = datastore.prepare(q);
 		List<Entity> result = pq.asList(FetchOptions.Builder.withLimit(100));
-		return result;
-	}
-
-	@ApiMethod(name = "topscores", httpMethod = HttpMethod.GET)
-	public List<Entity> topscores() {
-		Query q = new Query("Score").addSort("score", SortDirection.DESCENDING);
-
-		DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
-		PreparedQuery pq = datastore.prepare(q);
-		List<Entity> result = pq.asList(FetchOptions.Builder.withLimit(10));
 		return result;
 	}
 

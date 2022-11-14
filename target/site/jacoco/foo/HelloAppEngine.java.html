@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HelloAppEngine.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">WebAndCloud</a> &gt; <a href="index.source.html" class="el_package">foo</a> &gt; <span class="el_source">HelloAppEngine.java</span></div><h1>HelloAppEngine.java</h1><pre class="source lang-java linenums">package foo;
+
+import java.io.IOException;
+import java.net.Inet4Address;
+
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
+@WebServlet(
+    name = &quot;HelloAppEngine&quot;,
+    urlPatterns = {&quot;/hello&quot;}
+)
+<span class="fc" id="L15">public class HelloAppEngine extends HttpServlet {</span>
+<span class="fc" id="L16">	int i=0,l=0;</span>
+<span class="fc" id="L17">	static int j=0;</span>
+	
+  @Override
+  synchronized public void doGet(HttpServletRequest request, HttpServletResponse response) 
+      throws IOException {
+
+<span class="fc" id="L23">    response.setContentType(&quot;text/plain&quot;);</span>
+<span class="fc" id="L24">    response.setCharacterEncoding(&quot;UTF-8&quot;);</span>
+
+<span class="fc" id="L26">    response.getWriter().print(&quot;Hello App Engine!\r\n&quot;);</span>
+<span class="fc" id="L27">    response.getWriter().println(&quot;x:&quot;+this.hashCode());</span>
+<span class="fc" id="L28">    response.getWriter().println(&quot;ip:&quot;+Inet4Address.getLocalHost().getHostName());</span>
+<span class="fc" id="L29">    response.getWriter().println(&quot;y:&quot;+Thread.currentThread());</span>
+<span class="fc" id="L30">    response.getWriter().println(&quot;i:&quot;+i++);</span>
+    
+<span class="fc bfc" id="L32" title="All 2 branches covered.">    for (int k=0;k&lt;1000000000;k++) {</span>
+<span class="fc" id="L33">    	l=l+1;</span>
+    }
+<span class="fc" id="L35">    response.getWriter().println(&quot;j:&quot;+j++);</span>
+<span class="fc" id="L36">    response.getWriter().println(&quot;l:&quot;+l);</span>
+<span class="fc" id="L37">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.5.201910111838</span></div></body></html>
