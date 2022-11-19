@@ -6,10 +6,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
-
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.8.0/css/bulma.min.css">
 <script defer src="https://use.fontawesome.com/releases/v5.3.1/js/all.js"></script>
-
 
 <script src="https://unpkg.com/jwt-decode/build/jwt-decode.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -21,197 +19,238 @@
 
 <script>	
 
-var DiceGame={
-  turn : 0,
-  d1 : 1,
-  d2 : 1,
-  name : 'spock',
-  score : 0,
-
-  play: function() {
- 	if (this.turn < 10) {
-   	  this.d1 = Math.floor((Math.random() * 5) + 1);
-	  this.d2 = Math.floor((Math.random() * 5) + 1);
-	  if (this.d1 + this.d2 == 7) {
-	    this.score += 10;
-	  }
-	  this.turn++;
-	} else {
-		//Score.save(this.score,this.name);
-		this.turn=0;
-		this.score=0;
-	}
-   }
- } // DiceGame
-
-var DiceView={
-	view: function() {
-		return m('div', [
-			m('div',{class:'subtitle'},"Just play here!!"),
-			m("input[type=text][placeholder=name]", {
-				value: DiceGame.name,
-				class: 'input is-rounded',
-				 oninput: function (e) {
-					 DiceGame.name=e.target.value
-                    },
-				 }),
-			m('div',{class:'level'},[
-			 m('label',{class:'level-item'},"turn:"+DiceGame.turn),
-			 m('label',{class:'level-item'},"score:"+DiceGame.score),
-			]),
-			m('label',{class:'label'},"Dice 1:"+DiceGame.d1),
-			m('label',{class:'label'},"Dice 2:"+DiceGame.d2),
-			m('button',{
-				class: 'button is-link',
-				onclick: function(e) {DiceGame.play()}
-			    },"play"),
-		])
-	}	
+var Post = {
+    searched: '',
+    notValidURL: '',
+    list: [],
+    loadList: function() {
+        return m.request({
+            method: "GET",
+                url: "_ah/api/myApi/v1/abcd" + '?access_token=' + Login.ID
+            })
+        .then(function(posts) {
+            Post.list = posts.items
+	        m.redraw(true) 
+	    })
+	},
+	post: function(url) {
+        var data = {'url': url}
+	    m.request({
+            method: "POST",
+            url: "_ah/api/myApi/v1/createPost" + '?access_token=' + Login.ID,
+            params: data
+        })
+	    .then(function() {
+	        Post.loadList()
+	    })
+	},
+    like: function(id) {
+        var data = {'id': id}
+	    m.request({
+            method: "POST",
+            url: "_ah/api/myApi/v1/likePost" + '?access_token=' + Login.ID,
+            params: data
+        })
+	    .then(function() {
+	        Post.loadList()
+	    })
+    }
 }
- 
-var Search = {
-        searched: '',
-	    list: [],
-	    loadList: function(name) {
-            Search.searched = name;
-            var data = {'name': name}
-	        return m.request({
-                method: "GET",
-                url: "_ah/api/myApi/v1/searchUsers" + '?access_token=' + Login.ID,
-                params: data
-            })
-	        .then(function(result) {
-	            Search.list = result.items
-	        	console.log("got:",result.items)
-	        	m.redraw(true) 
-	        })
-	    },
-	    follow: function(user) {
-            var data = {'id': user.properties.id}
-	        return m.request({
-                method: "POST",
-                url: "_ah/api/myApi/v1/followUser" + '?access_token=' + Login.ID,
-                params: data
-            })
-	        .then(function() {
-	        	Search.loadList(Search.searched)
-	        })
-	    }
-	}
 
-var SearchView = {
-  view: function() {
-   	return m('div', [
-	  m('div',{class:'subtitle'},"Top 10 Scores"),
-      m("input[type=text][placeholder=Search users to follow]", {
-                disabled: Login.name==='',
-				value: Search.searched,
-				class: 'input is-rounded',
-				 oninput: function (e) {
-					 Search.loadList(e.target.value);
-                    },
-				 }),
-	  m('table', {class:'table is-striped'},[
-	    Search.list.map(function(user) {
-	      return m("tr", [
-            m("img", {
-                "src":user.properties.picture,
-                "width":"40",
-                "height":"40",
-                "style":{"border-radius":"50%"}
-            }),
-	        m('td', m('label', user.properties.name)),
+var PostView = {
+    view: function() {
+        return m('div', [
+            m("input[type=text][placeholder=Enter the url of your image]", {
+                disabled: Login.name === '',
+                value: Post.searched,
+                class: 'input is-rounded',
+                oninput: function(e) {
+                    var image = new Image();
+
+                    image.onload = function() {
+                        Post.notValidURL = ''
+                        m.redraw(true);
+                    }
+
+                    image.onerror = function() {
+                        Post.notValidURL = "Cette URL n'est pas valide!"
+                        m.redraw(true);
+                    }
+
+                    image.src = e.target.value;
+                    Post.searched = e.target.value;
+                    m.redraw(true);
+                },
+		    }),
+            m("p", Post.notValidURL),
             m('button',{
 				class: 'button is-link',
-                disabled: user.properties.isFollower,
-				onclick: function(e) {
-                    Search.follow(user)
+                disabled: Post.searched === '' || Post.notValidURL != '',
+				onclick: function() {
+                    Post.post(Post.searched)
+                    Post.searched = '';
                 }
-			    },"Follow"),
-	      ])
+			},
+                "Send post"
+            ),
+	        m('table', {class:'table is-striped'},[
+                Post.list.map(function(post) {
+                    return m("tr", [
+                        m("p", post.properties.sender),
+                        m("img", {"src":post.properties.url}),
+                        m('button',{
+                            class: 'button is-link',
+                            disabled: post.properties.hasLiked,                                
+                            onclick: function() {
+                                 Post.like(post.properties.id)
+                            }
+                        },
+                            "Like " + post.properties.likes
+                        ),
+                    ])
+                })
+            ]),
+            m('button',{
+				class: 'button is-link',
+                disabled: Login.name === '',
+				onclick: function() {
+                    Post.loadList()
+                }
+			},
+                "Load new posts"
+            )
+	    ])
+    }
+}
+
+var Search = {
+    searched: '',
+	list: [],
+	loadList: function(name) {
+        Search.searched = name;
+        var data = {'name': name}
+	    return m.request({
+            method: "GET",
+            url: "_ah/api/myApi/v1/searchUsers" + '?access_token=' + Login.ID,
+            params: data
+        })
+	    .then(function(users) {
+	        Search.list = users.items
+	        m.redraw(true) 
 	    })
-	   ])
-	 ])
-  }
+	},
+	follow: function(user) {
+        var data = {'id': user.properties.id}
+	    m.request({
+            method: "POST",
+            url: "_ah/api/myApi/v1/followUser" + '?access_token=' + Login.ID,
+            params: data
+        })
+	    .then(function() {
+	        Search.loadList(Search.searched)
+	    })
+	}
+}
+
+var SearchView = {
+    view: function() {
+   	    return m('div', [
+	        m('div',{class:'subtitle'},"Users "),
+            m("input[type=text][placeholder=Enter the name of a user]", {
+                disabled: Login.name === '',
+				value: Search.searched,
+				class: 'input is-rounded',
+				oninput: function (e) {
+					Search.loadList(e.target.value);
+                },
+			}),
+	        m('table', {class:'table is-striped'},[
+                Search.list.map(function(user) {
+                    return m("tr", [
+                        m("img", {
+                            "src":user.properties.picture,
+                            "width":"40",
+                            "height":"40",
+                            "style":{"border-radius":"50%"}
+                        }),
+	                    m('td', m('label', user.properties.name)),
+                        m('button',{
+				            class: 'button is-link',
+                            disabled: user.properties.isFollower,
+				            onclick: function() {
+                                Search.follow(user)
+                            }
+			            },
+                            "Follow"
+                        ),
+	                ])
+	            })
+	        ])
+	    ])
+    }
 }
 
 
 var Login = {
-  name:"",
-  email:"",
-  ID:"",
-  url:"",
-  handleCredential: function(response) {
-    console.log("callback called:"+response.credential)
-    // decodeJwtResponse() is a custom function defined by you
-    // to decode the credential response.
-    const responsePayload = jwt_decode(response.credential);
-   
-    console.log("ID: " + responsePayload.sub);
-    console.log('Full Name: ' + responsePayload.name);
-    console.log('Given Name: ' + responsePayload.given_name);
-    console.log('Family Name: ' + responsePayload.family_name);
-    console.log("Image URL: " + responsePayload.picture);
-    console.log("Email: " + responsePayload.email);
+    name:"",
+    ID:"",
+    url:"",
+    handleCredential: function(response) {
+        const responsePayload = jwt_decode(response.credential);
 
-    DiceGame.name= responsePayload.name
-    Login.name=responsePayload.name
-    Login.email= responsePayload.email
-    Login.ID=response.credential
-    Login.url= responsePayload.picture 
-    // external event
-    m.redraw()
+        Login.name=responsePayload.name
+        Login.ID=response.credential
+        Login.url= responsePayload.picture 
 
-    var data = {'name': responsePayload.name, 'picture': responsePayload.picture}
-    m.request({
-        method: "POST",
-        url: "_ah/api/myApi/v1/registerUser" + '?access_token=' + Login.ID,
-        params: data
-    })
-}
+        m.redraw(true)
 
+        var data = {'name': responsePayload.name, 'picture': responsePayload.picture}
+        m.request({
+            method: "POST",
+            url: "_ah/api/myApi/v1/registerUser" + '?access_token=' + Login.ID,
+            params: data
+        })
+    }
 }
 
 var LoginView = {
     view: function() {
- 	return m('div', {class:'container'}, [
-      m("h1", {class: 'title'}, 'Login'),
-      m("div", {
-      	   "id":"g_id_onload",
-      	   "data-client_id":"198559984912-f0hq5dtmguc10ta2lrfrfhlmmtgdg805.apps.googleusercontent.com",
-           "data-callback": "handleCredentialResponse"}),
-      m("div", {
-      	   "class":"g_id_signin",
-      	   "data-type":"standard"}),
-      m("li", {class: 'content'}, "name:"+Login.name),
-      m("li", {class: 'content'}, "email:"+Login.email),
-      m("img",{"src":Login.url}),
-      ])
+ 	    return m('div', {class:'container'}, [
+            m("h1", {class: 'title'}, 'Profil'),
+            m("div", {
+      	        "id":"g_id_onload",
+      	        "data-client_id":"198559984912-f0hq5dtmguc10ta2lrfrfhlmmtgdg805.apps.googleusercontent.com",
+                "data-callback": "handleCredentialResponse"
+            }),
+            m("div", {
+      	        "class":"g_id_signin",
+      	        "data-type":"standard"
+            }),
+            m("li", {class: 'content'}, "tttttttttt:"+Login.name),
+            m("img",{"src":Login.url}),
+        ])
     }
-
 }
 
 function handleCredentialResponse(response) {
-    console.log("callback called:"+response.credential)
     Login.handleCredential(response)
 }
 
 
-var Hello = {
-   view: function() {
-   	return m('div', {class:'container'}, [
-           m("h1", {class: 'title'}, 'The Stupid Dice Game'),
-           m('div',{class: 'tile is-ancestor'},[
-           m("div", {class: 'tile'}, m('div',{class:'tile is-child box'},m(LoginView))),
-           m("div", {class: 'tile'}, m('div',{class:'tile is-child box'},m(DiceView))),
-           m("div", {class: 'tile'}, m('div',{class:'tile is-child box'},m(SearchView))),
+var TinyGram = {
+    view: function() {
+        return m('div', {class:'container'}, [
+            m("h1", {class: 'title'}, 'TinyGram'),
+            m('div',{class: 'tile is-ancestor'},[
+                m("div", {class: 'tile'}, m('div',{class:'tile is-child box'},m(LoginView))),
+                m("div", {class: 'tile'}, m('div',{class:'tile is-child box'},m(PostView))),
+                m("div", {class: 'tile'}, m('div',{class:'tile is-child box'},m(SearchView))),
            ])
        ])
-   }
+    }
 }
 
-m.mount(document.body, Hello)	
-
+m.mount(document.body, TinyGram)	
 
 </script>
 </body>

@@ -1,5 +1,5 @@
 indexes:
-- kind: "FollowIndex"
+- kind: "Friend"
   properties:
-  - name: "follower"
-  - name: "followed"
+  - name: "friends"
+  - name: "age"

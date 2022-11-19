@@ -5,7 +5,7 @@ derived_file_type:
 - java_precompiled
 auto_id_policy: default
 beta_settings:
-  'source_reference': 'https://github.com/momo54/webandcloud.git#6cffc2a17740ec7733fd9fef5b98f7375f9a7f63'
+  'source_reference': 'https://github.com/Bobinho44/-PROJET_WCD_M1.git#7359c13d72533177c387f7b02e78a3db1d4d8d31'
 env_variables:
   'ENDPOINTS_SERVICE_NAME': 'wcd-cloud-datastore-projet.appspot.com'
 api_version: 'user_defined'

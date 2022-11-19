@@ -1,24 +1,19 @@
 package foo;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
-import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
+import java.util.Optional;
 import java.util.Random;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 import com.google.api.server.spi.auth.common.User;
 import com.google.api.server.spi.config.Api;
 import com.google.api.server.spi.config.ApiMethod;
 import com.google.api.server.spi.config.ApiMethod.HttpMethod;
 import com.google.api.server.spi.config.ApiNamespace;
-import com.google.api.server.spi.config.Named;
-import com.google.api.server.spi.config.Nullable;
-import com.google.api.server.spi.response.CollectionResponse;
 import com.google.api.server.spi.response.UnauthorizedException;
-import com.google.api.server.spi.auth.EspAuthenticator;
 
 import com.google.appengine.api.datastore.Cursor;
 import com.google.appengine.api.datastore.DatastoreService;
@@ -30,15 +25,8 @@ import com.google.appengine.api.datastore.Key;
 import com.google.appengine.api.datastore.KeyFactory;
 import com.google.appengine.api.datastore.Query;
 import com.google.appengine.api.datastore.PreparedQuery;
-import com.google.appengine.api.datastore.PropertyProjection;
-import com.google.appengine.api.datastore.PreparedQuery.TooManyResultsException;
-import com.google.appengine.api.datastore.Query.CompositeFilter;
-import com.google.appengine.api.datastore.Query.CompositeFilterOperator;
-import com.google.appengine.api.datastore.Query.Filter;
 import com.google.appengine.api.datastore.Query.FilterOperator;
 import com.google.appengine.api.datastore.Query.FilterPredicate;
-import com.google.appengine.api.datastore.Query.SortDirection;
-import com.google.appengine.api.datastore.QueryResultList;
 import com.google.appengine.api.datastore.Transaction;
 
 @Api(name = "myApi",
@@ -55,8 +43,192 @@ import com.google.appengine.api.datastore.Transaction;
 
 public class ScoreEndpoint {
 
+    @ApiMethod(name = "likePost", httpMethod = HttpMethod.POST)
+	public void likePost(User user, TinyLikeInfo likeInfo) throws UnauthorizedException, EntityNotFoundException {
+		
+        //Checks if the user is registered
+        if (user == null) {
+			throw new UnauthorizedException("Invalid credentials");
+        }
+
+        DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
+
+        //Gets the post to like
+        Entity tinyPost = datastore.get(KeyFactory.createKey("Post", likeInfo.id));
+
+        //Creates the like index
+        Entity tinyLikeIndex = new Entity("LikeIndex", user.getId() + "/" + likeInfo.id);
+        tinyLikeIndex.setProperty("post", tinyPost.getKey());
+        tinyLikeIndex.setProperty("liker", user.getId());
+        datastore.put(tinyLikeIndex);
+
+        //Gets all like counter associated with the post
+        Query q = new Query("LikeCounter").setFilter(new FilterPredicate("post", FilterOperator.EQUAL, tinyPost.getKey()));
+        List<Entity> counters = datastore.prepare(q).asList(FetchOptions.Builder.withLimit(40000));
+
+        boolean liked = false;
+
+        //Likes the post
+        while (!liked) {
+
+            //Selects a random counter
+            Entity tinyLikeCounter = counters.get(new Random().nextInt(counters.size()));
+
+            //Starts transaction
+            Transaction transaction = datastore.beginTransaction();
+
+            long likes = (long) tinyLikeCounter.getProperty("likes");
+            tinyLikeCounter.setProperty("likes", likes + 1);
+            datastore.put(tinyLikeCounter);
+
+            transaction.commit();
+
+            //Checks if the transaction has been commited
+            if (transaction.isActive()) {
+                transaction.rollback();
+
+                //Checks if the counter limit hasn't be reached
+                if (counters.size() < 40000) {
+
+                    //Creates a new like counter
+                    Entity newTinyLikeCounter = new Entity("LikeCounter", tinyPost.getKey() + "/" + user.getId());
+                    newTinyLikeCounter.setProperty("post", tinyPost.getKey());
+                    newTinyLikeCounter.setProperty("likes", 1L);
+                    datastore.put(newTinyLikeCounter);
+                    liked = true;
+                }
+            }
+
+            //The transaction has been commited
+            else {
+                liked = true;
+            }
+        }
+    }
+
+    private long getLikes(User user, Entity post) throws UnauthorizedException {
+        DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
+
+        //Gets all like counter of a post
+        Query q = new Query("LikeCounter").setFilter(new FilterPredicate("post", FilterOperator.EQUAL, post.getKey()));
+
+        //Gets the number of like of a post
+        return datastore.prepare(q).asList(FetchOptions.Builder.withLimit(40000)).stream()
+            .mapToLong(counter -> (long) counter.getProperty("likes"))
+            .sum();
+    }
+
+    private boolean hasLiked(String liker, long post) throws UnauthorizedException {
+        DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
+
+        //Checks if a LikeIndex has the key "liker/post"
+        try {
+            datastore.get(KeyFactory.createKey("LikeIndex", liker + "/" + post));
+            return true;
+        }
+        catch (EntityNotFoundException e) {
+            return false;
+        }
+
+    }
+
+    @ApiMethod(name = "createPost", httpMethod = HttpMethod.POST)
+	public void createPost(User user, TinyPostInfo postInfo) throws UnauthorizedException, EntityNotFoundException {
+		
+        //Checks if the user is registered
+        if (user == null) {
+			throw new UnauthorizedException("Invalid credentials");
+        }
+
+        DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
+
+        //Creates the post
+        Entity tinyPost = new Entity("Post");
+        tinyPost.setProperty("url", postInfo.url);
+        tinyPost.setProperty("sender",  user.getId());
+        datastore.put(tinyPost);
+
+        //Creates the like counter
+        Entity tinyLikeCounter = new Entity("LikeCounter", tinyPost.getKey() + "/initialCounter");
+        tinyLikeCounter.setProperty("post", tinyPost.getKey());
+        tinyLikeCounter.setProperty("likes", 0L);
+        datastore.put(tinyLikeCounter);
+
+        List<String> followers;
+        int followersNumber = 1;
+        long postDate = new Date().getTime();
+        //Optional<Cursor> cursor = Optional.empty();
+
+        //Gets all user followers and create post index
+        while (followersNumber >= 1) {
+            Query q = new Query("FollowIndex").setFilter(new FilterPredicate("followed", FilterOperator.EQUAL, user.getId()));
+
+            PreparedQuery pq = datastore.prepare(q);
+
+            /**QueryResultList<Entity> result = cursor.map(c -> pq.asQueryResultList(FetchOptions.Builder.withLimit(40000).startCursor(c))).orElse(pq.asQueryResultList(FetchOptions.Builder.withLimit(40000)));
+
+            cursor = Optional.of(result.getCursor());
+
+            followers = result.stream()
+                .map(follower -> (String) follower.getProperty("follower"))
+                .collect(Collectors.toList());
+
+            followersNumber = result.size();*/
+
+            followers = pq.asList(FetchOptions.Builder.withLimit(40000)).stream()
+                .map(follower -> (String) follower.getProperty("follower"))
+                .collect(Collectors.toList());
+
+            followersNumber = 0;
+
+            //Creates the postIndex
+            Entity tinyPostIndex = new Entity("PostIndex", Long.MAX_VALUE - postDate + "/" + user.getId());
+            tinyPostIndex.setProperty("post", tinyPost.getKey());
+            tinyPostIndex.setProperty("followers", new ArrayList<>(followers));
+            datastore.put(tinyPostIndex);
+        }
+    }
+
+    //TODO getPosts
+    @ApiMethod(name = "abcd", httpMethod = HttpMethod.GET)
+	public List<Entity> abcd(User user) throws UnauthorizedException {
+
+        //Checks if the user is registered
+		if (user == null) {
+			throw new UnauthorizedException("Invalid credentials");
+        }
+
+        DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
+
+        //Gets all post index where the user is a follower of the sender
+        Query q = new Query("PostIndex").setFilter(new FilterPredicate("followers", FilterOperator.EQUAL, user.getId()));
+    
+        //Gets all post where the user is a follower of the sender
+        return datastore.prepare(q).asList(FetchOptions.Builder.withLimit(10)).stream()
+            .map(postIndex ->  {
+                try {
+                    Entity searchedPost = datastore.get((Key) postIndex.getProperty("post"));
+                    
+                    //Creates the post informations
+                    Entity e = new Entity("SearchedPost");
+                    e.setProperty("id", searchedPost.getKey().getId());
+                    e.setProperty("sender", datastore.get(KeyFactory.createKey("User", (String) searchedPost.getProperty("sender"))).getProperty("fullName"));
+                    e.setProperty("url", searchedPost.getProperty("url"));
+                    e.setProperty("likes", getLikes(user, searchedPost));
+                    e.setProperty("hasLiked", hasLiked(user.getId(), ((Key) postIndex.getProperty("post")).getId()));
+        
+                    return e;
+                } catch (EntityNotFoundException | UnauthorizedException e) {
+                    return null;
+                }
+            })
+            .collect(Collectors.toList());
+    }
+
     @ApiMethod(name = "registerUser", httpMethod = HttpMethod.POST)
 	public void registerUser(User user, TinyUserInfo userInfo) throws UnauthorizedException {
+
+        //Checks if the user is registered
 		if (user == null) {
 			throw new UnauthorizedException("Invalid credentials");
         }
@@ -69,11 +241,6 @@ public class ScoreEndpoint {
         tinyUser.setProperty("name", userInfo.name.toLowerCase());
         tinyUser.setProperty("picture", userInfo.picture);
         datastore.put(tinyUser);
-        Entity tinyUser2 = new Entity("User", "abcdefg9999");
-        tinyUser.setProperty("fullName", "Jean Benoit");
-        tinyUser2.setProperty("name", "jean benoit");
-        tinyUser2.setProperty("picture", "https://cdn.pixabay.com/photo/2015/04/23/22/00/tree-736885__480.jpg");
-        datastore.put(tinyUser2);
 
         //Creates the follow index
         Entity tinyFollowIndex = new Entity("FollowIndex", user.getId() + "/" + user.getId());
@@ -84,32 +251,41 @@ public class ScoreEndpoint {
 
     @ApiMethod(name = "searchUsers", httpMethod = HttpMethod.GET)
 	public List<Entity> searchUsers(User user, TinySearchUserInfo searchUserInfo) throws UnauthorizedException {
-		if (user == null) {
+		
+        //Checks if the user is registered
+        if (user == null) {
 			throw new UnauthorizedException("Invalid credentials");
         }
 
+        DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
+
+        //Checks if the reasearch is not empty
         if (searchUserInfo.name.equals("")) {
             return Collections.emptyList();
         }
         
+        //Gets all user with a name greater than the reasearched name (lexicographical order)
 		Query q = new Query("User").setFilter(new FilterPredicate("name", FilterOperator.GREATER_THAN_OR_EQUAL, searchUserInfo.name));
 
-		DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
-		PreparedQuery pq = datastore.prepare(q);
-		
-        return pq.asList(FetchOptions.Builder.withLimit(10)).stream().map(searchedUser -> {
-            Entity e = new Entity("SearchedUser");
-            e.setProperty("id", searchedUser.getKey().getName());
-            e.setProperty("name", searchedUser.getProperty("name"));
-            e.setProperty("picture", searchedUser.getProperty("picture"));
-            e.setProperty("isFollower", isFollower(user.getId(), searchedUser.getKey().getName()));
+		//Gets all user compatible with the research
+        return datastore.prepare(q).asList(FetchOptions.Builder.withLimit(10)).stream()
+            .map(searchedUser -> {
 
-            return e;
-        }).collect(Collectors.toList());
+                //Creates the user informations
+                Entity e = new Entity("SearchedUser");
+                e.setProperty("id", searchedUser.getKey().getName());
+                e.setProperty("name", searchedUser.getProperty("name"));
+                e.setProperty("picture", searchedUser.getProperty("picture"));
+                e.setProperty("isFollower", isFollower(user.getId(), searchedUser.getKey().getName()));
+
+                return e;
+            }).collect(Collectors.toList());
 	}
     
     @ApiMethod(name = "followUser", httpMethod = HttpMethod.POST)
 	public void followUser(User user, TinyFollowInfo followInfo) throws UnauthorizedException {
+
+        //Checks if the user is registered
 		if (user == null) {
 			throw new UnauthorizedException("Invalid credentials");
         }
@@ -126,6 +302,7 @@ public class ScoreEndpoint {
     private boolean isFollower(String follower, String followed) {
         DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
 
+        //Checks if a followIndex has the key "follower/followed"
         try {
             datastore.get(KeyFactory.createKey("FollowIndex", follower + "/" + followed));
             return true;
@@ -134,176 +311,5 @@ public class ScoreEndpoint {
             return false;
         }
     }
-	Random r = new Random();
 
-    // remember: return Primitives and enums are not allowed. 
-	@ApiMethod(name = "getRandom", httpMethod = HttpMethod.GET)
-	public RandomResult random() {
-		return new RandomResult(r.nextInt(6) + 1);
-	}
-
-	@ApiMethod(name = "hello", httpMethod = HttpMethod.GET)
-	public User Hello(User user) throws UnauthorizedException {
-        if (user == null) {
-			throw new UnauthorizedException("Invalid credentials");
-		}
-        System.out.println("Yeah:"+user.toString());
-		return user;
-	}
-
-
-	@ApiMethod(name = "scores", httpMethod = HttpMethod.GET)
-	public List<Entity> scores() {
-		Query q = new Query("Score").addSort("score", SortDirection.DESCENDING);
-
-		DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
-		PreparedQuery pq = datastore.prepare(q);
-		List<Entity> result = pq.asList(FetchOptions.Builder.withLimit(100));
-		return result;
-	}
-
-	@ApiMethod(name = "myscores", httpMethod = HttpMethod.GET)
-	public List<Entity> myscores(@Named("name") String name) {
-		Query q = new Query("Score").setFilter(new FilterPredicate("name", FilterOperator.EQUAL, name)).addSort("score",
-				SortDirection.DESCENDING);
-
-		DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
-		PreparedQuery pq = datastore.prepare(q);
-		List<Entity> result = pq.asList(FetchOptions.Builder.withLimit(10));
-		return result;
-	}
-
-	@ApiMethod(name = "addScore", httpMethod = HttpMethod.GET)
-	public Entity addScore(@Named("score") int score, @Named("name") String name) {
-
-		Entity e = new Entity("Score", "" + name + score);
-		e.setProperty("name", name);
-		e.setProperty("score", score);
-
-		DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
-		datastore.put(e);
-
-		return e;
-	}
-
-	@ApiMethod(name = "postMessage", httpMethod = HttpMethod.POST)
-	public Entity postMessage(PostMessage pm) {
-
-		Entity e = new Entity("Post"); // quelle est la clef ?? non specifié -> clef automatique
-		e.setProperty("owner", pm.owner);
-		e.setProperty("url", pm.url);
-		e.setProperty("body", pm.body);
-		e.setProperty("likec", 0);
-		e.setProperty("date", new Date());
-
-		DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
-		Transaction txn = datastore.beginTransaction();
-		datastore.put(e);
-		txn.commit();
-		return e;
-	}
-
-	@ApiMethod(name = "mypost", httpMethod = HttpMethod.GET)
-	public CollectionResponse<Entity> mypost(@Named("name") String name, @Nullable @Named("next") String cursorString) {
-
-	    Query q = new Query("Post").setFilter(new FilterPredicate("owner", FilterOperator.EQUAL, name));
-
-	    // https://cloud.google.com/appengine/docs/standard/python/datastore/projectionqueries#Indexes_for_projections
-	    //q.addProjection(new PropertyProjection("body", String.class));
-	    //q.addProjection(new PropertyProjection("date", java.util.Date.class));
-	    //q.addProjection(new PropertyProjection("likec", Integer.class));
-	    //q.addProjection(new PropertyProjection("url", String.class));
-
-	    // looks like a good idea but...
-	    // generate a DataStoreNeedIndexException -> 
-	    // require compositeIndex on owner + date
-	    // Explosion combinatoire.
-	    // q.addSort("date", SortDirection.DESCENDING);
-	    
-	    DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
-	    PreparedQuery pq = datastore.prepare(q);
-	    
-	    FetchOptions fetchOptions = FetchOptions.Builder.withLimit(2);
-	    
-	    if (cursorString != null) {
-		fetchOptions.startCursor(Cursor.fromWebSafeString(cursorString));
-		}
-	    
-	    QueryResultList<Entity> results = pq.asQueryResultList(fetchOptions);
-	    cursorString = results.getCursor().toWebSafeString();
-	    
-	    return CollectionResponse.<Entity>builder().setItems(results).setNextPageToken(cursorString).build();
-	    
-	}
-    
-	@ApiMethod(name = "getPost",
-		   httpMethod = ApiMethod.HttpMethod.GET)
-	public CollectionResponse<Entity> getPost(User user, @Nullable @Named("next") String cursorString)
-			throws UnauthorizedException {
-
-		if (user == null) {
-			throw new UnauthorizedException("Invalid credentials");
-		}
-
-		Query q = new Query("Post").
-		    setFilter(new FilterPredicate("owner", FilterOperator.EQUAL, user.getEmail()));
-
-		// Multiple projection require a composite index
-		// owner is automatically projected...
-		// q.addProjection(new PropertyProjection("body", String.class));
-		// q.addProjection(new PropertyProjection("date", java.util.Date.class));
-		// q.addProjection(new PropertyProjection("likec", Integer.class));
-		// q.addProjection(new PropertyProjection("url", String.class));
-
-		// looks like a good idea but...
-		// require a composite index
-		// - kind: Post
-		//  properties:
-		//  - name: owner
-		//  - name: date
-		//    direction: desc
-
-		// q.addSort("date", SortDirection.DESCENDING);
-
-		DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
-		PreparedQuery pq = datastore.prepare(q);
-
-		FetchOptions fetchOptions = FetchOptions.Builder.withLimit(2);
-
-		if (cursorString != null) {
-			fetchOptions.startCursor(Cursor.fromWebSafeString(cursorString));
-		}
-
-		QueryResultList<Entity> results = pq.asQueryResultList(fetchOptions);
-		cursorString = results.getCursor().toWebSafeString();
-
-		return CollectionResponse.<Entity>builder().setItems(results).setNextPageToken(cursorString).build();
-	}
-
-	@ApiMethod(name = "postMsg", httpMethod = HttpMethod.POST)
-	public Entity postMsg(User user, PostMessage pm) throws UnauthorizedException {
-
-		if (user == null) {
-			throw new UnauthorizedException("Invalid credentials");
-		}
-
-		Entity e = new Entity("Post", Long.MAX_VALUE-(new Date()).getTime()+":"+user.getEmail());
-		e.setProperty("owner", user.getEmail());
-		e.setProperty("url", pm.url);
-		e.setProperty("body", pm.body);
-		e.setProperty("likec", 0);
-		e.setProperty("date", new Date());
-
-///		Solution pour pas projeter les listes
-//		Entity pi = new Entity("PostIndex", e.getKey());
-//		HashSet<String> rec=new HashSet<String>();
-//		pi.setProperty("receivers",rec);
-		
-		DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
-		Transaction txn = datastore.beginTransaction();
-		datastore.put(e);
-//		datastore.put(pi);
-		txn.commit();
-		return e;
-	}
 }
