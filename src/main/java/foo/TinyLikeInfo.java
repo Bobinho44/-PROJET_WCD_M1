@@ -2,7 +2,7 @@ package foo;
 
 public class TinyLikeInfo {
 
-    public long id;
+    public String id;
 
     public TinyLikeInfo() {}
 

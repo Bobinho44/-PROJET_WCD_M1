@@ -26,7 +26,7 @@ var Post = {
     loadList: function() {
         return m.request({
             method: "GET",
-                url: "_ah/api/myApi/v1/abcd" + '?access_token=' + Login.ID
+                url: "_ah/api/myApi/v1/abcdef" + '?access_token=' + Login.ID
             })
         .then(function(posts) {
             Post.list = posts.items
@@ -34,7 +34,7 @@ var Post = {
 	    })
 	},
 	post: function(url) {
-        var data = {'url': url}
+        var data = {'url': url, 'sender': Login.name}
 	    m.request({
             method: "POST",
             url: "_ah/api/myApi/v1/createPost" + '?access_token=' + Login.ID,
@@ -226,7 +226,7 @@ var LoginView = {
       	        "class":"g_id_signin",
       	        "data-type":"standard"
             }),
-            m("li", {class: 'content'}, "tttttttttt:"+Login.name),
+            m("li", {class: 'content'}, "777777777777:"+Login.name),
             m("img",{"src":Login.url}),
         ])
     }
