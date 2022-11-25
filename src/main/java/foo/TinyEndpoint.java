@@ -3,12 +3,10 @@ package foo;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collector;
 import java.util.stream.Collectors;
 
 import com.google.api.server.spi.auth.common.User;
@@ -45,6 +43,13 @@ import com.google.appengine.api.datastore.Transaction;
 
 public class TinyEndpoint {
 
+    /**
+     * Likes a post
+     * @param user the user
+     * @param likeInfo the like info wrapper containing the post id
+     * @throws UnauthorizedException the user is invalid
+     * @throws EntityNotFoundException the post id is invalid
+     */
     @ApiMethod(name = "likePost", httpMethod = HttpMethod.POST)
 	public void likePost(User user, TinyLikeInfo likeInfo) throws UnauthorizedException, EntityNotFoundException {
 		
@@ -91,6 +96,7 @@ public class TinyEndpoint {
                     
                     while (!liked) {
                         Transaction t = datastore.beginTransaction();
+
                         //Creates a new like counter
                         Entity newTinyLikeCounter = new Entity("LikeCounter", tinyPost.getKey().getName() + "/" + user.getId());
                         newTinyLikeCounter.setProperty("post", tinyPost.getKey());
@@ -120,7 +126,7 @@ public class TinyEndpoint {
         Query q3 = new Query("LikeCounter").setFilter(new FilterPredicate("post", FilterOperator.EQUAL, tinyPost.getKey()));
 
         //Gets the number of like of a post
-        long likes = datastore.prepare(q3).asList(FetchOptions.Builder.withLimit(40000)).stream()
+        long likes = datastore.prepare(q3).asList(FetchOptions.Builder.withLimit(40000)).stream().parallel()
             .mapToLong(counter -> (long) counter.getProperty("likes"))
             .sum();
 
@@ -135,10 +141,15 @@ public class TinyEndpoint {
         }
     }
 
+    /**
+     * Creates a new post
+     * 
+     * @param user the user
+     * @param postInfo the post info wrapper containing the sender and the url
+     * @throws UnauthorizedException the user is invalid
+     */
     @ApiMethod(name = "createPost", httpMethod = HttpMethod.POST)
-	public void createPost(User user, TinyPostInfo postInfo) throws UnauthorizedException, EntityNotFoundException {
-		
-        long first = System.currentTimeMillis();
+	public void createPost(User user, TinyPostInfo postInfo) throws UnauthorizedException {
         
         //Checks if the user is registered
         if (user == null) {
@@ -149,11 +160,13 @@ public class TinyEndpoint {
 
         long postDate = new Date().getTime();
 
+        //Creates a post for all list of 40000 followers
         int page = 40001;
         for (int i = 0; page >= 40000; i++) {
             Query q = new Query("FollowIndex").setFilter(new FilterPredicate("followed", FilterOperator.EQUAL, user.getId()));
 
-            List<String> followers = datastore.prepare(q).asList(FetchOptions.Builder.withLimit(40000).offset(i * 40000)).stream()
+            //Collects a list of 40000 followers
+            List<String> followers = datastore.prepare(q).asList(FetchOptions.Builder.withLimit(40000).offset(i * 40000)).stream().parallel()
                 .map(follower -> (String) follower.getProperty("follower"))
                 .collect(Collectors.toList());
 
@@ -172,19 +185,17 @@ public class TinyEndpoint {
             tinyLikeCounter.setProperty("likes", 0);
             datastore.put(tinyLikeCounter);
         }
-
-        long last = System.currentTimeMillis() - first;
-
-        Entity postTime = new Entity("createPostTime");
-        postTime.setProperty("time", last);
-        datastore.put(postTime);
-
     }
 
+    /**
+     * Gets the last 10 posts (the function does not work with a real name like getLastPosts))
+     * 
+     * @param user the user
+     * @return the last 10 posts
+     * @throws UnauthorizedException the user is invalid
+     */
     @ApiMethod(name = "abcdef", httpMethod = HttpMethod.GET)
 	public List<Entity> abcdef(User user) throws UnauthorizedException {
-        
-        long first = System.currentTimeMillis();
 
         //Checks if the user is registered
 		if (user == null) {
@@ -205,19 +216,22 @@ public class TinyEndpoint {
         
         long time = Long.valueOf(c.get(c.size() - 1).getKey().getName().split("/")[0]);
 
+        //Gets all last liked post by the user
         Query q2 = new Query("LikeIndex")
             .setFilter(new FilterPredicate("liker", FilterOperator.EQUAL, user.getId()))
             .setFilter(new FilterPredicate("time", FilterOperator.GREATER_THAN_OR_EQUAL, time))
             .setKeysOnly();
         
-        List<String> d = datastore.prepare(q2).asList(FetchOptions.Builder.withLimit(10)).parallelStream()
+        //Collects all post from user's likes
+        List<String> d = datastore.prepare(q2).asList(FetchOptions.Builder.withLimit(10)).stream().parallel()
             .map(like -> like.getKey().getName())
             .collect(Collectors.toList());
         
 
         AtomicInteger likedNumber = new AtomicInteger(0);
 
-        List<Entity> seachedPosts = c.stream()
+        //Gets last posts
+        return c.stream()
             .map(post -> {
                 String[] args = ((String) post.getProperty("infos")).split("arg=");
                 String key = post.getKey().getName();
@@ -235,16 +249,15 @@ public class TinyEndpoint {
                 return e;
             })
             .collect(Collectors.toList());
-
-        long last = System.currentTimeMillis() - first;
-
-        Entity postTime = new Entity("getPostTime");
-        postTime.setProperty("time", last);
-        datastore.put(postTime);
-
-        return seachedPosts;
     }
 
+    /**
+     * Registers a user
+     * 
+     * @param user the user
+     * @param userInfo the user info wrapper containing the user name and his picture url
+     * @throws UnauthorizedException the user is invalid
+     */
     @ApiMethod(name = "registerUser", httpMethod = HttpMethod.POST)
 	public void registerUser(User user, TinyUserInfo userInfo) throws UnauthorizedException {
   
@@ -265,27 +278,16 @@ public class TinyEndpoint {
         tinyFollowIndex.setProperty("follower", user.getId());
         tinyFollowIndex.setProperty("followed", user.getId());
         datastore.put(tinyFollowIndex);
-        
-        List<String> ids = new ArrayList<>();
-        for (int i = 0; i < 99; i++) {
-            ids.add(RandomStringUtils.random(new Random().nextInt(10), true, true) + RandomStringUtils.random(new Random().nextInt(10), true, true));
-        }
-
-        for (String id : ids) {
-            String a = String.valueOf(Math.abs(new Random().nextLong()));
-            //Creates the user
-        Entity tinyUser2 = new Entity("User", a + "arg=" + id + "arg=" + userInfo.picture);
-        tinyUser2.setProperty("name", id.toLowerCase());
-        datastore.put(tinyUser2);
-
-        //Creates the follow index
-        Entity tinyFollowIndex2 = new Entity("FollowIndex", a + "/" + user.getId());
-        tinyFollowIndex2.setProperty("follower", a);
-        tinyFollowIndex2.setProperty("followed", user.getId());
-        datastore.put(tinyFollowIndex2);
-        }
     }
 
+    /**
+     * Searchs user from his name
+     * 
+     * @param user the user
+     * @param searchUserInfo the search user info wrapper containing the name of the searched user
+     * @return a list of compatible users
+     * @throws UnauthorizedException the user is invalid
+     */
     @ApiMethod(name = "searchUsers", httpMethod = HttpMethod.GET)
 	public List<Entity> searchUsers(User user, TinySearchUserInfo searchUserInfo) throws UnauthorizedException {
 		
@@ -305,7 +307,7 @@ public class TinyEndpoint {
 		Query q = new Query("User").setFilter(new FilterPredicate("name", FilterOperator.GREATER_THAN_OR_EQUAL, searchUserInfo.name));
 
 		//Gets all user compatible with the research
-        return datastore.prepare(q).asList(FetchOptions.Builder.withLimit(10)).stream()
+        return datastore.prepare(q).asList(FetchOptions.Builder.withLimit(10)).stream().parallel()
             .map(searchedUser -> {
 
                 String[] args = searchedUser.getKey().getName().split("arg=");
@@ -321,6 +323,13 @@ public class TinyEndpoint {
             }).collect(Collectors.toList());
 	}
     
+    /**
+     * Follows a user
+     * 
+     * @param user the user
+     * @param followInfo the follow info wrapper containing the followed id
+     * @throws UnauthorizedException the user is invalid
+     */
     @ApiMethod(name = "followUser", httpMethod = HttpMethod.POST)
 	public void followUser(User user, TinyFollowInfo followInfo) throws UnauthorizedException {
 
@@ -338,6 +347,13 @@ public class TinyEndpoint {
         datastore.put(tinyFollowIndex);
     }
 
+    /**
+     * Checks if the the follower follow the followed
+     * 
+     * @param follower the follower
+     * @param followed the followed
+     * @return true if the the follower follow the followed, false otherwise
+     */
     private boolean isFollower(String follower, String followed) {
         DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
 
