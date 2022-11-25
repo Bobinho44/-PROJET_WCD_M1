@@ -17,7 +17,7 @@
     <servlet-class origin="WebDescriptor(file:///home/kyliangerard44/webandcloud/target/appengine-staging/WEB-INF/web.xml):0">com.google.api.server.spi.EndpointsServlet</servlet-class>
     <init-param origin="WebDescriptor(file:///home/kyliangerard44/webandcloud/target/appengine-staging/WEB-INF/web.xml):1">
       <param-name>services</param-name>
-      <param-value>foo.ScoreEndpoint</param-value>
+      <param-value>foo.TinyEndpoint</param-value>
     </init-param>
     <async-supported>false</async-supported>
   </servlet>

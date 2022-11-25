@@ -35,7 +35,7 @@
                   
             <param-name>services</param-name>
                   
-            <param-value>foo.ScoreEndpoint</param-value>
+            <param-value>foo.TinyEndpoint</param-value>
                 
         </init-param>
             

@@ -5,7 +5,7 @@ derived_file_type:
 - java_precompiled
 auto_id_policy: default
 beta_settings:
-  'source_reference': 'https://github.com/Bobinho44/-PROJET_WCD_M1.git#c4e0e4e0b8cc9e0b67515ebf20ed7f13493150e7'
+  'source_reference': 'https://github.com/Bobinho44/-PROJET_WCD_M1.git#33ce725faadb0022e6f0225255302c894219b1ea'
 env_variables:
   'ENDPOINTS_SERVICE_NAME': 'wcd-cloud-datastore-projet.appspot.com'
 api_version: 'user_defined'

@@ -17,7 +17,7 @@
   </system-properties>
 <!-- [START env_variables] -->
     <env-variables>
-<!--         <env-var name="ENDPOINTS_SERVICE_NAME" value="sobike44.appspot.com" /> -->
+<!--         <env-var name="ENDPOINTS_SERVICE_NAME" value="wcd-cloud-datastore-projet.appspot.com" /> -->
         <env-var name="ENDPOINTS_SERVICE_NAME" value="wcd-cloud-datastore-projet.appspot.com" />
 
     </env-variables>

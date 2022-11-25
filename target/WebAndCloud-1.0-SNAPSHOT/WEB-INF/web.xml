@@ -13,7 +13,7 @@
 		<servlet-class>com.google.api.server.spi.EndpointsServlet</servlet-class>
 		<init-param>
 			<param-name>services</param-name>
-			<param-value>foo.ScoreEndpoint</param-value>
+			<param-value>foo.TinyEndpoint</param-value>
 		</init-param>
 	</servlet>
 	<!-- Route API method requests to the backend. -->
@@ -41,11 +41,11 @@
 <!-- 		<filter-class>com.google.api.control.extensions.appengine.GoogleAppEngineControlFilter</filter-class> -->
 <!-- 		<init-param> -->
 <!-- 			<param-name>endpoints.projectId</param-name> -->
-<!-- 			<param-value>sobike44</param-value> -->
+<!-- 			<param-value>wcd-cloud-datastore-projet</param-value> -->
 <!-- 		</init-param> -->
 <!-- 		<init-param> -->
 <!-- 			<param-name>endpoints.serviceName</param-name> -->
-<!-- 			<param-value>sobike44.appspot.com</param-value> -->
+<!-- 			<param-value>wcd-cloud-datastore-projet.appspot.com</param-value> -->
 <!-- 		</init-param> -->
 <!-- 	</filter> -->
 
